@@ -7,6 +7,9 @@ const schema = a.schema({
       description: a.string(),
       location: a.string(),
       price: a.float(),
+      image: a.string(),
+      // Link to the user who created/owns this property
+      landlordID: a.id(),
     })
     // This ensures only the record owner can read/update/delete.
     .authorization((allow) => [allow.owner()]),
