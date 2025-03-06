@@ -92,6 +92,35 @@ export default function App() {
     fetchProperties();
   }
 
+    // 1) State to store the User list in memory
+  const [users, setUsers] = useState([]);
+
+  // 2) Create a new user with hardcoded sample data
+  async function createUser() {
+    try {
+      const { data } = await client.models.User.create({
+        name: "John Doe",
+        email: "john@example.com",
+        role: "TENANT",
+      });
+      console.log("Created user:", data);
+    } catch (err) {
+      console.error("Error creating user:", err);
+    }
+  }
+
+  // 3) List all existing users
+  async function listUsers() {
+    try {
+      const { data: userList } = await client.models.User.list();
+      console.log("Users found:", userList);
+      setUsers(userList);
+    } catch (err) {
+      console.error("Error listing users:", err);
+    }
+  }
+
+
   return (
     <Authenticator>
       {({ signOut }) => (
@@ -192,9 +221,39 @@ export default function App() {
               </Flex>
             ))}
           </Grid>
+          <Divider />
+
+          <Heading level={2}>Test: Manage Users</Heading>
+          <Flex direction="row" justifyContent="center" gap="1rem" marginBottom="2rem">
+            <Button onClick={createUser}>Create a Test User</Button>
+            <Button onClick={listUsers}>List All Users</Button>
+          </Flex>
+
+          {users.length > 0 && (
+            <div style={{ textAlign: "left" }}>
+              <Heading level={3}>Existing Users</Heading>
+              {users.map((u) => (
+                <div key={u.id}>
+                  <p>
+                    <strong>Name:</strong> {u.name}
+                  </p>
+                  <p>
+                    <strong>Email:</strong> {u.email}
+                  </p>
+                  <p>
+                    <strong>Role:</strong> {u.role}
+                  </p>
+                  <hr />
+                </div>
+              ))}
+            </div>
+          )}
+
           <Button onClick={signOut}>Sign Out</Button>
         </Flex>
       )}
     </Authenticator>
   );
 }
+
+
