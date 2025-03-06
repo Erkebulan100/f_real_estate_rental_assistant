@@ -10,6 +10,16 @@ const schema = a.schema({
     })
     // This ensures only the record owner can read/update/delete.
     .authorization((allow) => [allow.owner()]),
+
+  User: a
+    .model({
+      name: a.string(),
+      email: a.string(),
+      role: a.enum(["LANDLORD", "TENANT", "ADMIN"]),
+      // Add more fields here if you want (e.g. phoneNumber)
+    })
+    // Only let the record owner read/write this record
+    .authorization((allow) => [allow.owner()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
