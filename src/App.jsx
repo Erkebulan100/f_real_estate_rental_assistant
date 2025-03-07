@@ -1,3 +1,6 @@
+import { Routes, Route } from "react-router-dom";
+import LandingPage from "./pages/LandingPage";
+import Dashboard from "./pages/Dashboard";
 import { useState, useEffect } from "react";
 import {
   Authenticator,
@@ -11,19 +14,18 @@ import {
   Grid,
   Divider,
 } from "@aws-amplify/ui-react";
-import { Amplify } from "aws-amplify";
 import "@aws-amplify/ui-react/styles.css";
 import { getUrl } from "aws-amplify/storage";
 import { uploadData } from "aws-amplify/storage";
 import { generateClient } from "aws-amplify/data";
 import outputs from "../amplify_outputs.json";
+import * as AWS from 'aws-amplify';
 
 /**
  * @type {import('aws-amplify/data').Client<import('../amplify/data/resource').Schema>}
  */
 
-Amplify.configure(outputs);
-
+AWS.Amplify.configure(outputs);
 // Use the "Property" model instead of "Note"
 const client = generateClient({
   authMode: "userPool",
@@ -59,8 +61,26 @@ export default function App() {
     event.preventDefault();
     const form = new FormData(event.target);
 
-    // "title" is the property name, "description" for property details
-    const imageFile = form.get("image").name; // If no file selected, this is empty
+    // 1) Get the current Cognito user
+    const currentCognitoUser = await AWS.Auth.currentAuthenticatedUser();
+    
+    // 2) Find the matching record in your "User" model
+
+    const userEmail = currentCognitoUser.attributes.email;
+    const { data: matchedUsers } = await client.models.User.list({
+      filter: {email: userEmail },
+    });
+
+    const landlordRecord = matchedUsers[0];
+
+    // 3) If landlordRecord.role is not "LANDLORD", optionally warn or block 
+    if (landlordRecord?.role !== "LANDLORD"){
+      alert("Only LANDLORD can create properties");
+      return;
+    }
+
+    // 4) Create the property, linking it to the landlord's ID
+    const imageFile = form.get("image")?.name || ""; 
 
     const { data: newProp } = await client.models.Property.create({
       title: form.get("title"),
@@ -68,17 +88,18 @@ export default function App() {
       location: form.get("location"),
       price: parseFloat(form.get("price") || "0"), // parse the price input
       image: imageFile,
+      landlordID: landlordRecord.id, // link to the user's ID
     });
-
-    if (newProp.image) {
+    // 5) Upload image if any
+    if (imageFile) {
       await uploadData({
         path: ({ identityId }) =>
-          `property-images/${identityId}/${newProp.image}`,
+          `property-images/${identityId}/${imageFile}`,
         data: form.get("image"),
       }).result;
     }
 
-    // Refresh the property list
+    // 6) Refresh the property list and reset the form
     fetchProperties();
     event.target.reset();
   }
@@ -119,141 +140,26 @@ export default function App() {
       console.error("Error listing users:", err);
     }
   }
-
+  async function makeMeLandlord(){
+    // 1. Get the currently signed in-user's email from Cognito 
+    const currentUser = await AWS.Auth.currentAuthenticatedUser();
+    const userEmail = currentUser.attributes.email;
+    // 2. Create a new user record in Amplify Data with role = LANDLORD
+    const { data: newUser } = await client.models.User.create({
+      name: "Erkebulan",
+      email: userEmail, // same email you are signed in with 
+      role: "LANDLORD"
+    });
+    console.log("Created new landlord: ", newUser);
+  }
 
   return (
-    <Authenticator>
-      {({ signOut }) => (
-        <Flex
-          className="App"
-          justifyContent="center"
-          alignItems="center"
-          direction="column"
-          width="70%"
-          margin="0 auto"
-        >
-          <Heading level={1}>My Real Estate App</Heading>
-          <View as="form" margin="3rem 0" onSubmit={createProperty}>
-            <Flex direction="column" justifyContent="center" gap="2rem" padding="2rem">
-              <TextField
-                name="title"
-                placeholder="Property Title"
-                label="Property Title"
-                labelHidden
-                variation="quiet"
-                required
-              />
-              <TextField
-                name="description"
-                placeholder="Property Description"
-                label="Property Description"
-                labelHidden
-                variation="quiet"
-                required
-              />
-              <TextField
-                name="location"
-                placeholder="Property Location"
-                label="Property Location"
-                labelHidden
-                variation="quiet"
-                required
-              />
-              <TextField
-                name="price"
-                placeholder="Monthly Rent Price"
-                label="Monthly Rent Price"
-                labelHidden
-                variation="quiet"
-                required
-                type="number"
-              />
-              <View
-                name="image"
-                as="input"
-                type="file"
-                alignSelf={"end"}
-                accept="image/png, image/jpeg"
-              />
-              <Button type="submit" variation="primary">
-                Create Property
-              </Button>
-            </Flex>
-          </View>
-          <Divider />
-          <Heading level={2}>Current Properties</Heading>
-          <Grid
-            margin="3rem 0"
-            autoFlow="column"
-            justifyContent="center"
-            gap="2rem"
-            alignContent="center"
-          >
-            {properties.map((prop) => (
-              <Flex
-                key={prop.id || prop.title}
-                direction="column"
-                justifyContent="center"
-                alignItems="center"
-                gap="2rem"
-                border="1px solid #ccc"
-                padding="2rem"
-                borderRadius="5%"
-                className="box"
-              >
-                <View>
-                  <Heading level="3">{prop.title}</Heading>
-                </View>
-                <Text fontStyle="italic">
-                  {prop.description} ({prop.location})
-                </Text>
-                <Text fontWeight="bold">${prop.price} / month</Text>
-                {prop.image && (
-                  <Image
-                    src={prop.image}
-                    alt={`Photo of ${prop.title}`}
-                    style={{ width: 400 }}
-                  />
-                )}
-                <Button variation="destructive" onClick={() => deleteProperty(prop)}>
-                  Delete Property
-                </Button>
-              </Flex>
-            ))}
-          </Grid>
-          <Divider />
-
-          <Heading level={2}>Test: Manage Users</Heading>
-          <Flex direction="row" justifyContent="center" gap="1rem" marginBottom="2rem">
-            <Button onClick={createUser}>Create a Test User</Button>
-            <Button onClick={listUsers}>List All Users</Button>
-          </Flex>
-
-          {users.length > 0 && (
-            <div style={{ textAlign: "left" }}>
-              <Heading level={3}>Existing Users</Heading>
-              {users.map((u) => (
-                <div key={u.id}>
-                  <p>
-                    <strong>Name:</strong> {u.name}
-                  </p>
-                  <p>
-                    <strong>Email:</strong> {u.email}
-                  </p>
-                  <p>
-                    <strong>Role:</strong> {u.role}
-                  </p>
-                  <hr />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Button onClick={signOut}>Sign Out</Button>
-        </Flex>
-      )}
-    </Authenticator>
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+    </Routes>
   );
+  
 }
 
 
